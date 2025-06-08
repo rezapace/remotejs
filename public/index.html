@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Remote Desktop</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:Arial,sans-serif;height:100vh;overflow:hidden;background:#000}
+    
+    .container{display:flex;height:100vh}
+    
+    .sidebar{
+      width:200px;background:#1a1a1a;color:#fff;padding:20px;
+      transform:translateX(0);transition:transform .3s;z-index:10;position:relative
+    }
+    .sidebar.hidden{transform:translateX(-100%)}
+    
+    .title{display:flex;align-items:center;gap:8px;margin-bottom:20px;font-size:18px}
+    
+    .section{margin-bottom:20px}
+    .section-title{font-size:12px;opacity:.7;margin-bottom:10px}
+    
+    .btn{
+      width:100%;padding:12px;background:#333;border:none;color:#fff;
+      border-radius:6px;cursor:pointer;margin-bottom:8px;display:flex;
+      align-items:center;gap:8px;font-size:14px
+    }
+    .btn:hover{background:#555}
+    .btn.active{background:#007acc}
+    
+    .info{background:#2a2a2a;padding:15px;border-radius:6px;font-size:12px}
+    .info-row{display:flex;justify-content:space-between;margin-bottom:8px}
+    .info-row:last-child{margin-bottom:0}
+    
+    .status-connected{color:#4ade80}
+    .status-connecting{color:#fbbf24}
+    .status-disconnected{color:#f87171}
+    
+    .main{flex:1;position:relative;background:#000}
+    
+    .screen-placeholder{
+      position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+      text-align:center;color:#666
+    }
+    .screen-placeholder i{font-size:48px;margin-bottom:16px}
+    
+    .stats{
+      position:absolute;top:20px;right:20px;background:rgba(0,0,0,.8);
+      color:#fff;padding:8px 12px;border-radius:20px;font-size:12px;
+      display:flex;gap:16px;opacity:0;pointer-events:none;transition:opacity .3s
+    }
+    .stats.show{opacity:1}
+    
+    .toggle{
+      position:absolute;right:-25px;top:50%;transform:translateY(-50%);
+      width:50px;height:50px;background:#333;border:none;color:#fff;
+      border-radius:50%;cursor:pointer;display:flex;align-items:center;
+      justify-content:center;font-size:18px;transition:all .3s;z-index:20
+    }
+    .toggle:hover{background:#555;transform:translateY(-50%) scale(1.1)}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="sidebar" id="sidebar">
+      <button class="toggle" id="toggle">
+        <i class="fas fa-chevron-left"></i>
+      </button>
+      
+      <div class="title">
+        <i class="fas fa-desktop"></i>
+        Remote Desktop
+      </div>
+      
+      <div class="section">
+        <div class="section-title">CONNECTION</div>
+        <button class="btn active" data-type="client">
+          <i class="fas fa-sign-in-alt"></i>
+          Client
+        </button>
+        <button class="btn" data-type="host">
+          <i class="fas fa-share-alt"></i>
+          Host
+        </button>
+      </div>
+      
+      <div class="info">
+        <div class="info-row">
+          <span><i class="fas fa-fingerprint"></i> ID</span>
+          <span>-</span>
+        </div>
+        <div class="info-row">
+          <span><i class="fas fa-signal"></i> Status</span>
+          <span class="status-disconnected">Disconnected</span>
+        </div>
+        <div class="info-row">
+          <span><i class="fas fa-tachometer-alt"></i> FPS</span>
+          <span id="fps">0</span>
+        </div>
+        <div class="info-row">
+          <span><i class="fas fa-clock"></i> Latency</span>
+          <span id="latency">0ms</span>
+        </div>
+      </div>
+      
+      <div class="section">
+        <button class="btn">
+          <i class="fas fa-expand"></i>
+          Fullscreen
+        </button>
+      </div>
+
+      <div class="section">
+        <div class="section-title">CLIPBOARD</div>
+        <button class="btn" id="clipboardCopy">
+          <i class="fas fa-copy"></i>
+          Copy (Ctrl+C)
+        </button>
+        <button class="btn" id="clipboardPaste">
+          <i class="fas fa-paste"></i>
+          Paste (Ctrl+V)
+        </button>
+        <button class="btn" id="clipboardCut">
+          <i class="fas fa-cut"></i>
+          Cut (Ctrl+X)
+        </button>
+      </div>
+
+      <div class="section">
+        <div class="section-title">TOUCH</div>
+        <button class="btn" id="touchMode">
+          <i class="fas fa-hand-paper"></i>
+          Touch Mode
+        </button>
+        <button class="btn" id="dragMode">
+          <i class="fas fa-hand-rock"></i>
+          Drag Mode
+        </button>
+      </div>
+    </div>
+    
+    <div class="main">
+      <div class="screen-placeholder">
+        <i class="fas fa-desktop"></i>
+        <div>Ready to Connect</div>
+      </div>
+      
+      <div class="stats" id="stats">
+        <span><i class="fas fa-tachometer-alt"></i> <span id="statsFps">0</span> FPS</span>
+        <span><i class="fas fa-clock"></i> <span id="statsLatency">0</span>ms</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="client.js"></script>
+  <script>
+    const sidebar=document.getElementById('sidebar');
+    const toggle=document.getElementById('toggle');
+    const icon=toggle.querySelector('i');
+    const stats=document.getElementById('stats');
+    
+    toggle.onclick=()=>{
+      sidebar.classList.toggle('hidden');
+      const hidden=sidebar.classList.contains('hidden');
+      icon.className=hidden?'fas fa-chevron-right':'fas fa-chevron-left';
+      stats.classList.toggle('show',hidden);
+    };
+  </script>
+</body>
+</html>

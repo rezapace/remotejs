@@ -1,0 +1,59 @@
+{
+  "name": "remote-desktop-local",
+  "version": "1.0.0",
+  "description": "Local Remote Desktop using WebRTC",
+  "main": "server.js",
+  "bin": {
+    "remote-desktop-local": "server.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "build": "pkg . --out-path dist --options no-bytecode,experimental-modules",
+    "build:mac": "pkg . --targets node18-macos-arm64 --out-path dist --options no-bytecode,experimental-modules",
+    "build:win": "pkg . --targets node18-win-x64 --out-path dist --options no-bytecode,experimental-modules",
+    "build:linux": "pkg . --targets node18-linux-x64 --out-path dist --options no-bytecode,experimental-modules",
+    "build:all": "pkg . --targets node18-macos-arm64,node18-win-x64,node18-linux-x64 --out-path dist --options no-bytecode,experimental-modules",
+    "make": "node build.js",
+    "make:mac": "node build.js mac",
+    "make:win": "node build.js windows",
+    "make:linux": "node build.js linux",
+    "make:all": "node build.js all",
+    "build-nexe": "nexe server.js --output dist/remote-desktop-local",
+    "build-nexe:mac": "nexe server.js --target mac-arm64-18.17.0 --output dist/remote-desktop-local-macos",
+    "build-nexe:win": "nexe server.js --target windows-x64-18.17.0 --output dist/remote-desktop-local-win.exe",
+    "build-nexe:linux": "nexe server.js --target linux-x64-18.17.0 --output dist/remote-desktop-local-linux"
+  },
+  "keywords": [
+    "remote-desktop",
+    "webrtc",
+    "screen-sharing"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "clipboardy": "^2.0.0",
+    "express": "^4.18.2",
+    "robotjs": "^0.6.0",
+    "socket.io": "^4.7.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "pkg": "^5.8.1",
+    "nexe": "^4.0.0-rc.6"
+  },
+  "pkg": {
+    "assets": [
+      "public/**/*"
+    ],
+    "scripts": [
+      "server.js",
+      "node_modules/robotjs/**/*"
+    ],
+    "targets": [
+      "node18-macos-arm64",
+      "node18-win-x64",
+      "node18-linux-x64"
+    ]
+  }
+}
