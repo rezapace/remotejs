@@ -2,6 +2,9 @@
 
 Aplikasi remote desktop lokal menggunakan Node.js dan WebRTC untuk Mac Air M1 ARM processor.
 
+![remote](https://github.com/rezapace/remotejs/blob/master/image.png?raw=true)
+
+
 ## Fitur
 
 ✅ **WebRTC Screen Sharing** - Streaming layar real-time tanpa kompresi berat  
