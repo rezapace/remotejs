@@ -13,9 +13,19 @@
     
     .sidebar{
       width:200px;background:#1a1a1a;color:#fff;padding:20px;
-      transform:translateX(0);transition:transform .3s;z-index:10;position:relative
+      transition:width .3s, padding .3s;z-index:10;position:relative;
+      overflow:visible;
     }
-    .sidebar.hidden{transform:translateX(-100%)}
+    .sidebar.hidden{
+      width:50px;
+      padding:0;
+      background:transparent;
+      border-right:1px solid rgba(0,122,204,0.3);
+    }
+    .sidebar.hidden .sidebar-content{
+      transform:translateX(-100%);
+      opacity:0;
+    }
     
     .title{display:flex;align-items:center;gap:8px;margin-bottom:20px;font-size:18px}
     
@@ -38,7 +48,7 @@
     .status-connecting{color:#fbbf24}
     .status-disconnected{color:#f87171}
     
-    .main{flex:1;position:relative;background:#000}
+    .main{flex:1;position:relative;background:#000;transition:all .3s}
     
     .screen-placeholder{
       position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
@@ -53,13 +63,74 @@
     }
     .stats.show{opacity:1}
     
+    .sidebar-content{
+      transition:transform .3s, opacity .3s;
+    }
+    
     .toggle{
       position:absolute;right:-25px;top:50%;transform:translateY(-50%);
       width:50px;height:50px;background:#333;border:none;color:#fff;
       border-radius:50%;cursor:pointer;display:flex;align-items:center;
-      justify-content:center;font-size:18px;transition:all .3s;z-index:20
+      justify-content:center;font-size:18px;transition:all .3s;z-index:30;
+      box-shadow:0 4px 12px rgba(0,0,0,0.3);
     }
     .toggle:hover{background:#555;transform:translateY(-50%) scale(1.1)}
+    .sidebar.hidden .toggle{
+      right:0;
+      background:#007acc;
+      transform:translateY(-50%) translateX(50%);
+      box-shadow:0 4px 16px rgba(0,122,204,0.4);
+    }
+    
+    /* Animasi pulse untuk tombol ketika sidebar tersembunyi */
+    .sidebar.hidden .toggle:hover {
+      animation: togglePulse 2s infinite;
+    }
+    
+    @keyframes togglePulse {
+      0% { box-shadow: 0 4px 16px rgba(0,122,204,0.4); }
+      50% { box-shadow: 0 4px 20px rgba(0,122,204,0.7); }
+      100% { box-shadow: 0 4px 16px rgba(0,122,204,0.4); }
+    }
+    
+    /* Video styling untuk responsivitas */
+    .main video {
+      transition: all .3s ease;
+    }
+    
+    /* Memastikan video mengambil ruang penuh ketika sidebar tersembunyi */
+    .container:has(.sidebar.hidden) .main {
+      width: 100%;
+    }
+    
+    /* Visual indicator untuk sidebar yang tersembunyi */
+    .sidebar.hidden::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 2px;
+      height: 100%;
+      background: linear-gradient(to bottom, transparent, #007acc, transparent);
+      opacity: 0.6;
+    }
+    
+    /* Tooltip untuk tombol toggle */
+    .toggle:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      left: 110%;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      white-space: nowrap;
+      z-index: 1000;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
@@ -69,75 +140,93 @@
         <i class="fas fa-chevron-left"></i>
       </button>
       
-      <div class="title">
-        <i class="fas fa-desktop"></i>
-        Remote Desktop
-      </div>
-      
-      <div class="section">
-        <div class="section-title">CONNECTION</div>
-        <button class="btn active" data-type="client">
-          <i class="fas fa-sign-in-alt"></i>
-          Client
-        </button>
-        <button class="btn" data-type="host">
-          <i class="fas fa-share-alt"></i>
-          Host
-        </button>
-      </div>
-      
-      <div class="info">
-        <div class="info-row">
-          <span><i class="fas fa-fingerprint"></i> ID</span>
-          <span>-</span>
+      <div class="sidebar-content">
+        <div class="title">
+          <i class="fas fa-desktop"></i>
+          Remote Desktop
         </div>
-        <div class="info-row">
-          <span><i class="fas fa-signal"></i> Status</span>
-          <span class="status-disconnected">Disconnected</span>
+        
+        <div class="section">
+          <div class="section-title">CONNECTION</div>
+          <button class="btn active" data-type="client">
+            <i class="fas fa-sign-in-alt"></i>
+            Client
+          </button>
+          <button class="btn" data-type="host">
+            <i class="fas fa-share-alt"></i>
+            Host
+          </button>
         </div>
-        <div class="info-row">
-          <span><i class="fas fa-tachometer-alt"></i> FPS</span>
-          <span id="fps">0</span>
+        
+        <div class="info">
+          <div class="info-row">
+            <span><i class="fas fa-fingerprint"></i> ID</span>
+            <span>-</span>
+          </div>
+          <div class="info-row">
+            <span><i class="fas fa-signal"></i> Status</span>
+            <span class="status-disconnected">Disconnected</span>
+          </div>
+          <div class="info-row">
+            <span><i class="fas fa-tachometer-alt"></i> FPS</span>
+            <span id="fps">0</span>
+          </div>
+          <div class="info-row">
+            <span><i class="fas fa-clock"></i> Latency</span>
+            <span id="latency">0ms</span>
+          </div>
         </div>
-        <div class="info-row">
-          <span><i class="fas fa-clock"></i> Latency</span>
-          <span id="latency">0ms</span>
+        
+        <div class="section">
+          <button class="btn">
+            <i class="fas fa-expand"></i>
+            Fullscreen
+          </button>
         </div>
-      </div>
-      
-      <div class="section">
-        <button class="btn">
-          <i class="fas fa-expand"></i>
-          Fullscreen
-        </button>
-      </div>
 
-      <div class="section">
-        <div class="section-title">CLIPBOARD</div>
-        <button class="btn" id="clipboardCopy">
-          <i class="fas fa-copy"></i>
-          Copy (Ctrl+C)
-        </button>
-        <button class="btn" id="clipboardPaste">
-          <i class="fas fa-paste"></i>
-          Paste (Ctrl+V)
-        </button>
-        <button class="btn" id="clipboardCut">
-          <i class="fas fa-cut"></i>
-          Cut (Ctrl+X)
-        </button>
-      </div>
+        <div class="section">
+          <div class="section-title">CLIPBOARD</div>
+          <button class="btn" id="clipboardCopy">
+            <i class="fas fa-copy"></i>
+            Copy (Ctrl+C)
+          </button>
+          <button class="btn" id="clipboardPaste">
+            <i class="fas fa-paste"></i>
+            Paste (Ctrl+V)
+          </button>
+          <button class="btn" id="clipboardCut">
+            <i class="fas fa-cut"></i>
+            Cut (Ctrl+X)
+          </button>
+        </div>
 
-      <div class="section">
-        <div class="section-title">TOUCH</div>
-        <button class="btn" id="touchMode">
-          <i class="fas fa-hand-paper"></i>
-          Touch Mode
-        </button>
-        <button class="btn" id="dragMode">
-          <i class="fas fa-hand-rock"></i>
-          Drag Mode
-        </button>
+        <div class="section">
+          <div class="section-title">TOUCH</div>
+          <button class="btn" id="touchMode">
+            <i class="fas fa-hand-paper"></i>
+            Touch Mode
+          </button>
+          <button class="btn" id="dragMode">
+            <i class="fas fa-hand-rock"></i>
+            Drag Mode
+          </button>
+        </div>
+
+        <div class="section">
+          <div class="section-title">QUALITY</div>
+          <button class="btn" id="qualityLow">
+            <i class="fas fa-signal"></i>
+            Low (720p/24fps)
+          </button>
+          <button class="btn active" id="qualityMedium">
+            <i class="fas fa-signal"></i>
+            Medium (900p/30fps)
+          </button>
+          <button class="btn" id="qualityHigh">
+            <i class="fas fa-signal"></i>
+            High (1080p/45fps)
+          </button>
+        </div>
       </div>
     </div>
     
@@ -161,13 +250,30 @@
     const toggle=document.getElementById('toggle');
     const icon=toggle.querySelector('i');
     const stats=document.getElementById('stats');
+    const main=document.querySelector('.main');
     
     toggle.onclick=()=>{
       sidebar.classList.toggle('hidden');
       const hidden=sidebar.classList.contains('hidden');
       icon.className=hidden?'fas fa-chevron-right':'fas fa-chevron-left';
       stats.classList.toggle('show',hidden);
+      
+      // Update tooltip
+      toggle.setAttribute('data-tooltip', hidden ? 'Show Sidebar' : 'Hide Sidebar');
+      
+      // Force video resize after transition
+      setTimeout(() => {
+        const video = main.querySelector('video');
+        if (video && video.srcObject) {
+          // Trigger a resize event to make video adjust to new container size
+          window.dispatchEvent(new Event('resize'));
+          console.log(hidden ? 'Sidebar hidden - video expanded' : 'Sidebar shown - video contracted');
+        }
+      }, 300); // Wait for CSS transition to complete
     };
+    
+    // Set initial tooltip
+    toggle.setAttribute('data-tooltip', 'Hide Sidebar');
   </script>
 </body>
 </html>

@@ -8,6 +8,7 @@ class RemoteDesktop {
     this.clientType = null;
     this.isConnected = false;
     this.stats = { fps: 0, latency: 0 };
+    this.currentQuality = 'medium'; // Default quality setting
     
     this.setupSocketHandlers();
     this.setupUI();
@@ -110,6 +111,21 @@ class RemoteDesktop {
     }
     if (dragModeBtn) {
       dragModeBtn.onclick = () => this.toggleDragMode();
+    }
+
+    // Quality control buttons
+    const qualityLowBtn = document.getElementById('qualityLow');
+    const qualityMediumBtn = document.getElementById('qualityMedium');
+    const qualityHighBtn = document.getElementById('qualityHigh');
+    
+    if (qualityLowBtn) {
+      qualityLowBtn.onclick = () => this.setQuality('low');
+    }
+    if (qualityMediumBtn) {
+      qualityMediumBtn.onclick = () => this.setQuality('medium');
+    }
+    if (qualityHighBtn) {
+      qualityHighBtn.onclick = () => this.setQuality('high');
     }
     
     // Mouse and keyboard events for main area
@@ -516,14 +532,24 @@ class RemoteDesktop {
     
     try {
       console.log('Starting screen share...');
+      
+      // Stop existing stream if any
+      if (this.localStream) {
+        this.localStream.getTracks().forEach(track => track.stop());
+      }
+      
+      // Get video constraints based on current quality setting
+      const videoSettings = this.getVideoConstraints();
+      const videoConstraints = {
+        mediaSource: 'screen',
+        frameRate: videoSettings.frameRate,
+        width: videoSettings.width,
+        height: videoSettings.height,
+        cursor: 'always'
+      };
+      
       this.localStream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          mediaSource: 'screen',
-          frameRate: { ideal: 60, max: 60 },
-          width: { ideal: 1920, max: 2560 },
-          height: { ideal: 1080, max: 1440 },
-          cursor: 'always'
-        },
+        video: videoConstraints,
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
@@ -532,6 +558,7 @@ class RemoteDesktop {
       });
       
       console.log('Screen share started successfully:', this.localStream);
+      console.log('Quality mode:', this.currentQuality);
       this.updateUI('status', 'Screen Sharing', 'status-connected');
       
       // Don't create peer connection yet, wait for client to connect
@@ -566,8 +593,17 @@ class RemoteDesktop {
         if (track.kind === 'video' && sender) {
           const params = sender.getParameters();
           if (params.encodings && params.encodings.length > 0) {
-            params.encodings[0].maxBitrate = 8000000; // 8 Mbps
-            params.encodings[0].maxFramerate = 60;
+            // Get settings from current quality
+            const videoSettings = this.getVideoConstraints();
+            
+            params.encodings[0].maxBitrate = videoSettings.bitrate;
+            params.encodings[0].maxFramerate = videoSettings.maxFramerate;
+            
+            // Add adaptive resolution scaling for low quality
+            if (this.currentQuality === 'low') {
+              params.encodings[0].scaleResolutionDownBy = 1.5;
+            }
+            
             sender.setParameters(params).catch(e => 
               console.warn('Failed to set sender parameters:', e)
             );
@@ -708,32 +744,66 @@ class RemoteDesktop {
   }
 
   optimizeSDP(sdp) {
-    // Optimize SDP for low latency and high quality
+    // Optimize SDP for low latency and adaptive quality
     let optimizedSdp = sdp;
     
-    // Set high bitrate for video
+    // Get bitrate settings from current quality
+    const videoSettings = this.getVideoConstraints();
+    const videoBitrate = Math.round(videoSettings.bitrate / 1000); // Convert to kbps
+    const audioBitrate = this.currentQuality === 'low' ? 64 : 128; // kbps
+    
+    // Set adaptive video bitrate
     optimizedSdp = optimizedSdp.replace(
       /(m=video.*\r\n)/,
-      '$1b=AS:8000\r\n'
+      `$1b=AS:${videoBitrate}\r\n`
     );
     
-    // Prefer VP8 for better performance on most devices
+    // Codec preference based on quality
+    if (this.currentQuality === 'low') {
+      // VP9 for better compression on low quality
+      optimizedSdp = optimizedSdp.replace(
+        /(a=rtpmap:(\d+) VP9\/90000\r\n)/,
+        `$1a=fmtp:$2 max-fr=${videoSettings.maxFramerate};max-fs=921600\r\n`
+      );
+    } else {
+      // VP8 for better performance on medium/high quality
+      optimizedSdp = optimizedSdp.replace(
+        /(a=rtpmap:(\d+) VP8\/90000\r\n)/,
+        `$1a=fmtp:$2 max-fr=${videoSettings.maxFramerate};max-fs=${this.currentQuality === 'high' ? 2073600 : 1382400}\r\n`
+      );
+    }
+    
+    // H.264 fallback with adaptive settings
+    const maxMbps = this.currentQuality === 'low' ? 40500 : (this.currentQuality === 'high' ? 125000 : 62500);
     optimizedSdp = optimizedSdp.replace(
-      /(a=rtpmap:(\d+) VP8\/90000\r\n)/,
-      '$1a=fmtp:$2 max-fr=60;max-fs=1920\r\n'
+      /(a=rtpmap:(\d+) H264\/90000\r\n)/,
+      `$1a=fmtp:$2 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f;max-br=${videoBitrate};max-mbps=${maxMbps}\r\n`
     );
     
-    // Set audio bitrate
+    // Set adaptive audio bitrate
     optimizedSdp = optimizedSdp.replace(
       /(m=audio.*\r\n)/,
-      '$1b=AS:128\r\n'
+      `$1b=AS:${audioBitrate}\r\n`
     );
     
-    // Enable NACK and PLI for error resilience
+    // Enable error resilience features
     if (!optimizedSdp.includes('a=rtcp-fb:')) {
+      // Add for VP8
       optimizedSdp = optimizedSdp.replace(
-        /(a=rtpmap:\d+ VP8\/90000\r\n)/g,
-        '$1a=rtcp-fb:96 nack\r\na=rtcp-fb:96 nack pli\r\na=rtcp-fb:96 goog-remb\r\n'
+        /(a=rtpmap:(\d+) VP8\/90000\r\n)/g,
+        '$1a=rtcp-fb:$2 nack\r\na=rtcp-fb:$2 nack pli\r\na=rtcp-fb:$2 goog-remb\r\n'
+      );
+      
+      // Add for VP9
+      optimizedSdp = optimizedSdp.replace(
+        /(a=rtpmap:(\d+) VP9\/90000\r\n)/g,
+        '$1a=rtcp-fb:$2 nack\r\na=rtcp-fb:$2 nack pli\r\na=rtcp-fb:$2 goog-remb\r\n'
+      );
+      
+      // Add for H.264
+      optimizedSdp = optimizedSdp.replace(
+        /(a=rtpmap:(\d+) H264\/90000\r\n)/g,
+        '$1a=rtcp-fb:$2 nack\r\na=rtcp-fb:$2 nack pli\r\na=rtcp-fb:$2 goog-remb\r\n'
       );
     }
     
@@ -771,12 +841,16 @@ class RemoteDesktop {
         background: #000;
         display: block;
         cursor: none;
+        transition: all 0.3s ease;
       `;
       video.autoplay = true;
       video.playsInline = true;
       video.muted = true; // Add muted to prevent autoplay issues
       main.appendChild(video);
       console.log('Created video element');
+      
+      // Add resize listener untuk memastikan video menyesuaikan ukuran
+      this.setupVideoResizeListener(video);
     }
     
     video.srcObject = this.remoteStream;
@@ -797,6 +871,33 @@ class RemoteDesktop {
     video.onerror = (e) => console.error('Video error:', e);
   }
   
+  setupVideoResizeListener(video) {
+    // Listen untuk window resize events
+    const handleResize = () => {
+      if (video && video.srcObject) {
+        // Force repaint dengan mengubah style secara temporary
+        const originalDisplay = video.style.display;
+        video.style.display = 'none';
+        
+        // Trigger reflow
+        void video.offsetHeight;
+        
+        video.style.display = originalDisplay;
+        
+        console.log('Video resized to fit new container');
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    
+    // Cleanup function
+    if (!this.videoResizeCleanup) {
+      this.videoResizeCleanup = () => {
+        window.removeEventListener('resize', handleResize);
+      };
+    }
+  }
+  
   disconnect() {
     this.isConnected = false;
     
@@ -808,6 +909,12 @@ class RemoteDesktop {
     if (this.localStream) {
       this.localStream.getTracks().forEach(track => track.stop());
       this.localStream = null;
+    }
+    
+    // Cleanup video resize listener
+    if (this.videoResizeCleanup) {
+      this.videoResizeCleanup();
+      this.videoResizeCleanup = null;
     }
     
     const video = document.querySelector('.main video');
@@ -997,6 +1104,57 @@ class RemoteDesktop {
       document.getElementById('statsLatency').textContent = this.stats.latency;
       
     }, 1000);
+  }
+
+  // Quality control functionality
+  async setQuality(quality) {
+    this.currentQuality = quality;
+    console.log(`Quality set to: ${quality}`);
+    
+    // Update UI - remove active from all quality buttons
+    const qualityButtons = ['qualityLow', 'qualityMedium', 'qualityHigh'];
+    qualityButtons.forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) btn.classList.remove('active');
+    });
+    
+    // Add active to selected button
+    const selectedBtn = document.getElementById(`quality${quality.charAt(0).toUpperCase() + quality.slice(1)}`);
+    if (selectedBtn) selectedBtn.classList.add('active');
+    
+    // If currently screen sharing, restart with new quality
+    if (this.clientType === 'host' && this.localStream) {
+      console.log('Restarting screen share with new quality...');
+      await this.startScreenShare();
+    }
+  }
+  
+  getVideoConstraints() {
+    const qualitySettings = {
+      low: {
+        frameRate: { ideal: 24, max: 30 },
+        width: { ideal: 1280, max: 1366 },
+        height: { ideal: 720, max: 768 },
+        bitrate: 1500000, // 1.5 Mbps
+        maxFramerate: 24
+      },
+      medium: {
+        frameRate: { ideal: 30, max: 35 },
+        width: { ideal: 1600, max: 1680 },
+        height: { ideal: 900, max: 1050 },
+        bitrate: 3000000, // 3 Mbps
+        maxFramerate: 30
+      },
+      high: {
+        frameRate: { ideal: 45, max: 60 },
+        width: { ideal: 1920, max: 2560 },
+        height: { ideal: 1080, max: 1440 },
+        bitrate: 6000000, // 6 Mbps
+        maxFramerate: 45
+      }
+    };
+    
+    return qualitySettings[this.currentQuality] || qualitySettings.medium;
   }
 }
 
